@@ -70,7 +70,7 @@ extern int (*STUB_stop_elevator)(void);
 int start_elevator(void) {
 	// check for error
    	if (my_elevator.state != OFFLINE)
-        	return 1;
+        	return 1;				// consumer --start hits here
 
 	// initialize elevator
     	my_elevator.current_floor = 1;
@@ -112,7 +112,7 @@ int stop_elevator(void) {
 
 static int elevator_run(void *data) {
 	// sys call
-	start_elevator();
+	//start_elevator();    i think this needs to be started by consumer --start
 	ssleep(10);
 	
 	// kthread
