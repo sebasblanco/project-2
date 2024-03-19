@@ -5,6 +5,7 @@
 #include <linux/kthread.h>
 #include <linux/delay.h>
 #include <linux/sched.h>
+#include <linux/list.h>
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Group-31");
@@ -18,6 +19,11 @@ MODULE_VERSION("0.1");
 #define MAX_FLOORS 5
 #define MAX_PASSENGERS 5
 #define MAX_WEIGHT 7
+
+struct list_head {
+	struct list_head *next;
+	struct list_head *prev;
+};
 
 struct passenger {
 	char type;
@@ -68,11 +74,8 @@ extern int (*STUB_issue_request)(int,int,int);
 extern int (*STUB_stop_elevator)(void);
 
 int start_elevator(void) {
-	// check for error
-   	if (my_elevator.state != OFFLINE)
-        	return 1;				// consumer --start hits here
-
 	// initialize elevator
+	my_elevator.state = OFFLINE;
     	my_elevator.current_floor = 1;
     	my_elevator.current_load = 0;
     	return 0;
@@ -112,7 +115,7 @@ int stop_elevator(void) {
 
 static int elevator_run(void *data) {
 	// sys call
-	//start_elevator();    i think this needs to be started by consumer --start
+	start_elevator();
 	ssleep(10);
 	
 	// kthread
@@ -145,7 +148,6 @@ static int elevator_run(void *data) {
 			}
 			// check for passengers to offload
 			if (floors[my_elevator.current_floor - 1].offload > 0) {
-				// off load
 				// remove from elevator list
 				// remove from elevator load
 				// add to floor list
@@ -190,7 +192,7 @@ static int elevator_run(void *data) {
 		case DOWN:
 			ssleep(2);
 			my_elevator.current_floor--;
-			if (my_elevator.current_floor != 0)
+			if (my_elevator.current_floor != 1)
 				my_elevator.state = LOADINGDOWN;
 			else
 				my_elevator.state = LOADINGUP;
