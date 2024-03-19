@@ -6,6 +6,7 @@
 #include <linux/delay.h>
 #include <linux/sched.h>
 #include <linux/list.h>
+#include <linux/string.h>
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Group-31");
@@ -20,14 +21,15 @@ MODULE_VERSION("0.1");
 #define MAX_PASSENGERS 5
 #define MAX_WEIGHT 7
 
-struct list_head {
-	struct list_head *next;
-	struct list_head *prev;
-};
+//define passenger types for loading
+#define PASSENGER_PART_TIME 0
+#define PASSENGER_LAWYER 1
+#define PASSENGER_BOSS 2
+#define PASSENGER_VISITOR 3
 
 struct passenger {
-	char type;
-	int weight;
+	int type;
+	double weight;
 	int start;
 	int destination;
 	struct list_head list;
@@ -78,8 +80,12 @@ int start_elevator(void) {
 	my_elevator.state = OFFLINE;
     	my_elevator.current_floor = 1;
     	my_elevator.current_load = 0;
+  	struct list_head list;  	
+       	INIT_LIST_HEAD(&list);	// initialize linked list of passengers
+    	
     	return 0;
 }
+
 
 int issue_request(int start_floor, int destination_floor, int type) {
 	// check for elevator logic
@@ -91,15 +97,36 @@ int issue_request(int start_floor, int destination_floor, int type) {
         // cue elevator for pick up
         floors[start_floor].load++;
         floors[destination_floor].offload++;
-        
+         	
         
         // set destination	
        	struct passenger * psgr = kmalloc(sizeof(struct passenger), GFP_KERNEL);
     	if (!psgr)
         	return -ENOMEM;
-    	psgr->type = type;
+        	
+        // if mutex/lock here?
+        psgr->type = type;
     	psgr->destination = destination_floor;
     	psgr->start = start_floor;
+    	psgr->weight = 0;
+        
+        switch (type) {
+		case PASSENGER_PART_TIME:
+			psgr->weight = 1;
+			break;
+	
+		case PASSENGER_LAWYER:
+			psgr->weight = 1.5;
+			break;
+			
+		case PASSENGER_BOSS:
+			psgr->weight = 2;
+			break;
+			
+		case PASSENGER_VISITOR:
+			psgr->weight = 0.5;
+			break; 	
+        }	
 
     	mutex_lock(&floors[start_floor + 1].floor_mutex);
     	// list_add_tail(&psgr->list, &floors[start_floor + 1].passenger_list);
