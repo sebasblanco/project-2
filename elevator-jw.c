@@ -77,13 +77,17 @@ extern int (*STUB_stop_elevator)(void);
 
 int start_elevator(void) {
 	// initialize elevator
-	my_elevator.state = OFFLINE;
-    	my_elevator.current_floor = 1;
-    	my_elevator.current_load = 0;
-  	struct list_head list;  	
-       	INIT_LIST_HEAD(&list);	// initialize linked list of passengers
+	if(my_elevator.state == OFFLINE){
+		my_elevator.state = IDLE;
+    		my_elevator.current_floor = 1; 
+    		my_elevator.current_load = 0;
+  		struct list_head list;  	
+       		INIT_LIST_HEAD(&list);	// initialize linked list of passengers
     	
-    	return 0;
+    		return 0;
+	}
+	else				// if elevator already running
+		return 1;	
 }
 
 
@@ -137,23 +141,25 @@ int issue_request(int start_floor, int destination_floor, int type) {
 }
 
 int stop_elevator(void) {
+	//this needs actual checking
+	my_elevator.state = OFFLINE;
     	return 0;
 }
 
 static int elevator_run(void *data) {
 	// sys call
-	start_elevator();
-	ssleep(10);
-	
+	//start_elevator();
+	ssleep(3);
+	my_elevator.state = OFFLINE;		// module inserted, elevator exists
 	// kthread
 	while (!kthread_should_stop()) {
+
  		// check state
 		switch (my_elevator.state) {
+		
 		case OFFLINE:
-			// turn on
-			my_elevator.state = IDLE;
 			break;
-			
+
         	case IDLE:
         		// start
         		ssleep(1);
@@ -224,6 +230,7 @@ static int elevator_run(void *data) {
 			else
 				my_elevator.state = LOADINGUP;
 			break;
+				
 		}
 	}
 	return 0;
