@@ -81,8 +81,8 @@ int start_elevator(void) {
 		my_elevator.state = IDLE;
     		my_elevator.current_floor = 1; 
     		my_elevator.current_load = 0;
-  		struct list_head list;  	
-       		INIT_LIST_HEAD(&list);	// initialize linked list of passengers
+  		//struct list_head list;  	
+       		INIT_LIST_HEAD(&my_elevator.passenger_list);	// initialize linked list of passengers
     	
     		return 0;
 	}
