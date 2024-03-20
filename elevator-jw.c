@@ -56,7 +56,7 @@ enum state {
 struct elevator {
 	enum state state;
 	int current_floor;
-	int current_load;
+	double current_load;
 	struct list_head passenger_list;
 	struct task_struct *thread;
 	struct mutex mutex;
@@ -139,6 +139,12 @@ int issue_request(int start_floor, int destination_floor, int type) {
 
     	return 0;
 }
+
+/*
+int load_elevator(int type){
+	passenger *p;	
+}
+*/
 
 int stop_elevator(void) {
 	//this needs actual checking
