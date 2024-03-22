@@ -100,8 +100,9 @@ int issue_request(int start_floor, int destination_floor, int type) {
         	return 1;  
         	
         // cue elevator for pick up
-        floors[start_floor].load++;
-        floors[destination_floor].offload++;      	
+        floors[start_floor - 1].load++;
+        floors[destination_floor - 1].offload++;      
+        floors[start_floor - 1].passengers_waiting++; // update floors passengers_waiting	
         
         // initialize passenger ptr	
        	struct passenger *psgr = kmalloc(sizeof(struct passenger), GFP_KERNEL);
@@ -110,10 +111,7 @@ int issue_request(int start_floor, int destination_floor, int type) {
         psgr->type = type;
     	psgr->destination = destination_floor;
     	psgr->start = start_floor;
-    	list_add_tail(&psgr->list, &my_elevator.passenger_list); // update passenger_list
-    	floors[start_floor - 1].passengers_waiting++; // update floors passengers_waiting
-        
-        switch (type) {
+    	switch (type) {
 		case P:
 			psgr->weight  = 10;
 			break;
@@ -130,6 +128,8 @@ int issue_request(int start_floor, int destination_floor, int type) {
 			psgr->weight = 5;
 			break; 	
         }
+        
+    	list_add_tail(&psgr->list, &my_elevator.passenger_list); // update passenger_list
 
     	return 0;
 }
@@ -379,6 +379,8 @@ static ssize_t elevator_read(struct file *file, char __user *ubuf, size_t count,
 			len += snprintf(buf + len, sizeof(buf) - len, "UNKNOWN");
 			break;
 		}
+		
+		len += snprintf(buf + len, sizeof(buf) - len, "\n");
 	    }
 	}
  /*
@@ -388,7 +390,7 @@ static ssize_t elevator_read(struct file *file, char __user *ubuf, size_t count,
         	len += snprintf(buf + len, sizeof(buf) - len, "[%s] Floor %d: %d", (my_elevator.current_floor == floors[i].floor_number) ? "*" : " ", floors[i].floor_number, floors[i].passengers_waiting);
         	struct passenger *floor_passenger_ptr;
         	list_for_each_entry(floor_passenger_ptr, &floors[i].passenger_list, list) {
-            len += snprintf(buf + len, sizeof(buf) - len, " %c%d", floor_passenger_ptr->type, floor_passenger_ptr->destination);
+            		len += snprintf(buf + len, sizeof(buf) - len, " %c%d", floor_passenger_ptr->type, floor_passenger_ptr->destination);
         	}
         	len += snprintf(buf + len, sizeof(buf) - len, "\n");
         	mutex_unlock(&floors[i].floor_mutex);
