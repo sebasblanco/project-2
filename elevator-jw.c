@@ -54,9 +54,11 @@ struct elevator {
 };
 
 struct floor {
+	
 	int floor_number;
 	int load;
 	int offload;
+	
 	int passengers_waiting;
 	struct list_head passenger_list;
 	struct mutex floor_mutex;
@@ -99,13 +101,20 @@ int issue_request(int start_floor, int destination_floor, int type) {
         type < 0 || type > 3)
         	return 1;  
         	
-        // cue elevator for pick up
+        INIT_LIST_HEAD(&floors[start_floor-1].passenger_list);		// initializes a waiting passenger		
+        
+        
+        	
+        // queue elevator for pick up
         floors[start_floor - 1].load++;
         floors[destination_floor - 1].offload++;      
         floors[start_floor - 1].passengers_waiting++; // update floors passengers_waiting	
         
+        
+        
         // initialize passenger ptr	
        	struct passenger *psgr = kmalloc(sizeof(struct passenger), GFP_KERNEL);
+       	
 	//if (!psgr)
         //	return -ENOMEM;
         psgr->type = type;
@@ -129,8 +138,8 @@ int issue_request(int start_floor, int destination_floor, int type) {
 			break; 	
         }
         
-    	list_add_tail(&psgr->list, &my_elevator.passenger_list); // update passenger_list
-
+    	list_add_tail(&psgr->list, &floors[start_floor - 1].passenger_list); 	// update  waiting passenger_list
+	//floors[start_floor - 1].passengers_waiting++; 			// update floors passengers_waiting
     	return 0;
 }
 
@@ -144,7 +153,7 @@ int stop_elevator(void) {
 	}
 
 	kfree(&my_elevator.passenger_list);
-
+	
 	my_elevator.state = OFFLINE;
     	return 0;
 }
@@ -167,16 +176,36 @@ static int elevator_run(void *data) {
         	case IDLE:
         		// start
         		ssleep(1);
-			my_elevator.state = LOADINGUP;	
+        		//my_elevator.state = LOADINGUP;
+        		
+        		for(int i = 0; i < MAX_FLOORS - 1; i++){		
+        			if(floors[i].passengers_waiting > 0)//{	// check if there are waiting passengers
+        				my_elevator.state = LOADINGUP;
+        				/*
+        				struct passenger *passenger_ptr;
+					list_for_each_entry(passenger_ptr, &floors[i].passenger_list, list){
+						if(passenger_ptr->start > my_elevator.current_floor)
+							my_elevator.state = UP;
+						else if(passenger_ptr->start < my_elevator.current_floor)
+							my_elevator.state = DOWN;
+						else if(passenger_ptr->start == my_elevator.current_floor)
+							my_elevator.state = LOADINGUP;	// probably change this to just loading
+						}
+        								
+        			}*/		  
+        			
+        		}
+        			
 			break;
 		
 		case LOADINGUP:
 			ssleep(1);
+			
 			int floor = my_elevator.current_floor - 1;
 			if (floors[floor].load > 0) { 	// check floor to load
 				if (my_elevator.current_load < MAX_WEIGHT) { 	// check for weight
 					struct passenger *passenger_ptr;
-					list_for_each_entry(passenger_ptr, &my_elevator.passenger_list, list) {
+					list_for_each_entry(passenger_ptr, &floors[floor].passenger_list, list) {	//edit
 						switch (passenger_ptr->type) {
 						case P:
 							my_elevator.current_load += 10;
@@ -241,16 +270,19 @@ static int elevator_run(void *data) {
 			break;
 			
 		case UP:
+		
 			my_elevator.current_floor++;
 			ssleep(2);
 			if (my_elevator.current_floor != MAX_FLOORS)
 				my_elevator.state = LOADINGUP;
 			else
 				my_elevator.state = LOADINGDOWN;
+				
 			break;
 
 		case LOADINGDOWN:
 			ssleep(1);
+			
 			if (floors[floor].load > 0) { 	// check floor to load
 				if (my_elevator.current_load < MAX_WEIGHT) { 	// check for weight
 					struct passenger *passenger_ptr;
@@ -315,13 +347,15 @@ static int elevator_run(void *data) {
 		case DOWN:
 			ssleep(2);
 			my_elevator.current_floor--;
+			
 			if (my_elevator.current_floor != 1)
 				my_elevator.state = LOADINGDOWN;
 			else
 				my_elevator.state = LOADINGUP;
+				
 			break;
 		}
-		return 0;
+	
 	}
 	return 0;
 }
