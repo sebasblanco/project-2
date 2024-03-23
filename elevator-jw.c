@@ -85,7 +85,10 @@ int start_elevator(void) {
     		my_elevator.current_load = 0;
   		//struct list_head list;  	
        		INIT_LIST_HEAD(&my_elevator.passenger_list);	// initialize linked list of passengers
-    	
+       		
+       		for(int i = 0; i < MAX_FLOORS; i++){		// initialize each waiting floor
+       			INIT_LIST_HEAD(&floors[i].passenger_list);
+    		}
     		return 0;
 	}
 	else			// if elevator already running	
@@ -139,7 +142,8 @@ int issue_request(int start_floor, int destination_floor, int type) {
         }
         
     	list_add_tail(&psgr->list, &floors[start_floor - 1].passenger_list); 	// update  waiting passenger_list
-	//floors[start_floor - 1].passengers_waiting++; 			// update floors passengers_waiting
+    	printk(KERN_INFO "Num passengers waiting on floor%d: %d\n", start_floor, floors[start_floor - 1].passengers_waiting);
+	
     	return 0;
 }
 
@@ -202,10 +206,12 @@ static int elevator_run(void *data) {
 			ssleep(1);
 			
 			int floor = my_elevator.current_floor - 1;
-			if (floors[floor].load > 0) { 	// check floor to load
+			if (floors[floor].passengers_waiting > 0) { 	// check floor to load
 				if (my_elevator.current_load < MAX_WEIGHT) { 	// check for weight
-					struct passenger *passenger_ptr;
-					list_for_each_entry(passenger_ptr, &floors[floor].passenger_list, list) {	//edit
+					struct passenger *passenger_ptr, *next_passenger_ptr;
+					list_for_each_entry_safe(passenger_ptr, next_passenger_ptr, 
+						&floors[floor].passenger_list, list) {
+						
 						switch (passenger_ptr->type) {
 						case P:
 							my_elevator.current_load += 10;
@@ -225,45 +231,91 @@ static int elevator_run(void *data) {
 						}
 					}
 					
+					// free memory
+					list_del(&passenger_ptr->list);
+					
 					// remove from floor list
 					floors[floor].passengers_waiting--;
-                    			// free memory
-					list_del(&passenger_ptr->list);
+					
+					// mark destination
+					floors[passenger_ptr->destination - 1].offload++;	// check the -1
+                    			
+					// take the passenger from floors (waiting) and append to elevator list
+					list_add_tail(&passenger_ptr->list, &my_elevator.passenger_list);
+					
 				}
 			}
-			if (floors[floor].offload > 0) { // check floor to offload
-				struct passenger *passenger_ptr;
-				list_for_each_entry(passenger_ptr, &my_elevator.passenger_list, list) {
+			/*
+			struct passenger *passenger_ptr;
+			list_for_each_entry(passenger_ptr, &my_elevator.passenger_list, list){
+				if(passenger_ptr->destination == my_elevator.current_floor){
 					switch (passenger_ptr->type) {
-					case P:
-						my_elevator.current_load -= 10;
-						break;
-					
-					case L:
-						my_elevator.current_load -= 15;
-						break;
-							
-					case B:
-						my_elevator.current_load -=  20;
-						break;
-							
-					case V:
-						my_elevator.current_load -=  5;
-						break; 	
+						case P:
+							my_elevator.current_load -= 10;
+							break;
+						
+						case L:
+							my_elevator.current_load -= 15;
+							break;
+								
+						case B:
+							my_elevator.current_load -=  20;
+							break;
+								
+						case V:
+							my_elevator.current_load -=  5;
+							break; 	
+
 					}
+					// free memory
+					list_del(&passenger_ptr->list);
+					kfree(passenger_ptr);	
+						
 				}
+			}
+			*/
+			
+			
+			if (floors[floor].offload > 0) { // check floor to offload
+				struct passenger *passenger_ptr, *next_passenger_ptr;
+				list_for_each_entry_safe(passenger_ptr, next_passenger_ptr, &my_elevator.passenger_list, list) {
+					if(passenger_ptr->destination == my_elevator.current_floor){
+						switch (passenger_ptr->type) {
+						case P:
+							my_elevator.current_load -= 10;
+							break;
+						
+						case L:
+							my_elevator.current_load -= 15;
+							break;
+								
+						case B:
+							my_elevator.current_load -=  20;
+							break;
+								
+						case V:
+							my_elevator.current_load -=  5;
+							break; 	
+						}
+					}	
+				}
+				
 					
-				// add to floor list
-				floors[floor].passengers_waiting++;
 				// free memory
 				list_del(&passenger_ptr->list);
 				kfree(passenger_ptr);
+				
+				// add to floor list
+				floors[floor].offload--;	// edit
 
 				
 				// remove from elevator list
 				// remove from elevator load
-				// add to floor list		
+				// add to floor list	
+					
 			}
+			
+			
 			
 			my_elevator.state = UP;
 			
@@ -283,10 +335,13 @@ static int elevator_run(void *data) {
 		case LOADINGDOWN:
 			ssleep(1);
 			
-			if (floors[floor].load > 0) { 	// check floor to load
+			//int floor = my_elevator.current_floor - 1;
+			if (floors[floor].passengers_waiting > 0) { 	// check floor to load
 				if (my_elevator.current_load < MAX_WEIGHT) { 	// check for weight
-					struct passenger *passenger_ptr;
-					list_for_each_entry(passenger_ptr, &my_elevator.passenger_list, list) {
+					struct passenger *passenger_ptr, *next_passenger_ptr;
+					list_for_each_entry_safe(passenger_ptr, next_passenger_ptr, 
+						&floors[floor].passenger_list, list) {
+						
 						switch (passenger_ptr->type) {
 						case P:
 							my_elevator.current_load += 10;
@@ -306,40 +361,62 @@ static int elevator_run(void *data) {
 						}
 					}
 					
-					// remove from floor list
-					floors[floor].passengers_waiting--;
-                    			// free memory
-					list_del(&passenger_ptr->list);
-				}
-			}
-			if (floors[floor].offload > 0) { // check floor to offload
-				struct passenger *passenger_ptr;
-				list_for_each_entry(passenger_ptr, &my_elevator.passenger_list, list) {
-					switch (passenger_ptr->type) {
-					case P:
-						my_elevator.current_load -= 10;
-						break;
-						
-					case L:
-						my_elevator.current_load -= 15;
-						break;
-								
-					case B:
-						my_elevator.current_load -=  20;
-						break;
-								
-					case V:
-						my_elevator.current_load -=  5;
-						break; 	
-					}
-						
-					// add to floor list
-					floors[floor].passengers_waiting++;
 					// free memory
 					list_del(&passenger_ptr->list);
-					kfree(passenger_ptr);	
+					
+					// remove from floor list
+					floors[floor].passengers_waiting--;
+					
+					// mark destination
+					floors[passenger_ptr->destination - 1].offload++;	// check the -1
+                    			
+					// take the passenger from floors (waiting) and append to elevator list
+					list_add_tail(&passenger_ptr->list, &my_elevator.passenger_list);
+					
 				}
 			}
+			
+			if (floors[floor].offload > 0) { // check floor to offload
+				struct passenger *passenger_ptr, *next_passenger_ptr;
+				list_for_each_entry_safe(passenger_ptr, next_passenger_ptr, &my_elevator.passenger_list, list) {
+					if(passenger_ptr->destination == my_elevator.current_floor){
+						switch (passenger_ptr->type) {
+						case P:
+							my_elevator.current_load -= 10;
+							break;
+						
+						case L:
+							my_elevator.current_load -= 15;
+							break;
+								
+						case B:
+							my_elevator.current_load -=  20;
+							break;
+								
+						case V:
+							my_elevator.current_load -=  5;
+							break; 	
+						}
+					}	
+				}
+				
+					
+				// free memory
+				list_del(&passenger_ptr->list);
+				kfree(passenger_ptr);
+				
+				// add to floor list
+				floors[floor].offload--;	// edit
+
+				
+				// remove from elevator list
+				// remove from elevator load
+				// add to floor list	
+					
+			}
+			
+			
+			
 			my_elevator.state = DOWN;
 			
 			break;
@@ -393,6 +470,7 @@ static ssize_t elevator_read(struct file *file, char __user *ubuf, size_t count,
     	len += snprintf(buf + len, sizeof(buf) - len, "Current load: %d lbs\n", my_elevator.current_load);
   
 	len += snprintf(buf + len, sizeof(buf) - len, "Elevator status: ");
+	/*
 	if (my_elevator.current_load > 0) {
 	    struct passenger *passenger_ptr;
 	    list_for_each_entry(passenger_ptr, &my_elevator.passenger_list, list) {
@@ -417,6 +495,7 @@ static ssize_t elevator_read(struct file *file, char __user *ubuf, size_t count,
 		len += snprintf(buf + len, sizeof(buf) - len, "\n");
 	    }
 	}
+	*/
  /*
 	printk("Accessing all floors");
     	for (int i = 0; i < MAX_FLOORS; ++i) {
