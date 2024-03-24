@@ -22,10 +22,10 @@ MODULE_VERSION("0.1");
 #define MAX_WEIGHT 70
 
 //define passenger types for loading
-#define V 0
-#define P 1
-#define L 2
-#define B 3
+#define P 0
+#define L 1
+#define B 2
+#define V 3
 
 struct passenger {
 	int type;
@@ -38,8 +38,7 @@ struct passenger {
 enum state {
 	OFFLINE,
 	IDLE,
-	LOADINGUP,
-	LOADINGDOWN,
+	LOADING,
 	UP,
 	DOWN
 };
@@ -58,6 +57,9 @@ struct floor {
 	int floor_number;
 	int load;
 	int offload;
+
+	bool needs_unloading;
+
 	
 	int passengers_waiting;
 	struct list_head passenger_list;
@@ -110,9 +112,8 @@ int issue_request(int start_floor, int destination_floor, int type) {
         	
         // queue elevator for pick up
         floors[start_floor - 1].load++;
-        floors[destination_floor - 1].offload++;      
+        floors[destination_floor - 1].offload++;
         floors[start_floor - 1].passengers_waiting++; // update floors passengers_waiting	
-        
         
         
         // initialize passenger ptr	
@@ -142,7 +143,7 @@ int issue_request(int start_floor, int destination_floor, int type) {
         }
         
     	list_add_tail(&psgr->list, &floors[start_floor - 1].passenger_list); 	// update  waiting passenger_list
-    	printk(KERN_INFO "Num passengers waiting on floor%d: %d\n", start_floor, floors[start_floor - 1].passengers_waiting);
+    	printk(KERN_INFO "type: %d, start: %d, dest:%d\n", psgr->type, psgr->start, psgr->destination);
 	
     	return 0;
 }
@@ -174,266 +175,166 @@ static int elevator_run(void *data) {
  		// check state
 		switch (my_elevator.state) {
 		
-		case OFFLINE:
-			break;
+			case OFFLINE:
+				break;		
+	        	case IDLE:	
+        			ssleep(1);
+        			
+        			for(int i = 0; i < MAX_FLOORS - 1; i++){		
+        				if(floors[i].passengers_waiting > 0)//{	// check if there are waiting passengers
+        					my_elevator.state = UP;
+					else
+						my_elevator.state = IDLE;
+				}	
+				
+				break;
+					
+			case UP:
+				ssleep(2);
+				if (my_elevator.current_floor != MAX_FLOORS){
+					my_elevator.current_floor++;
+					
+					int floor = my_elevator.current_floor - 1;
+					if(floors[floor].needs_unloading == true){
+						my_elevator.state = LOADING;
+						break;
+					}	
+					if(floors[floor].passengers_waiting > 0) { 	// check if there are passengers on current floor to load
+						my_elevator.state = LOADING;
+						break;	
+					}
+					else{
+						my_elevator.state = UP;
+						break;
+					}		
+				}
+				else{
+					int floor = my_elevator.current_floor - 1;
+					if(floors[floor].needs_unloading == true){
+						my_elevator.state = LOADING;
+						break;
+					}	
+					if (floors[floor].passengers_waiting > 0) { 	// check if there are passengers on current floor to load
+						my_elevator.state = LOADING;
+							break;
+					}
+					my_elevator.state = DOWN;
+					break;
+				}
+				break;
+			case DOWN:
+				ssleep(2);
+				if (my_elevator.current_floor != 1){
+					my_elevator.current_floor--;
+					int floor = my_elevator.current_floor - 1;
+					if(floors[floor].needs_unloading == true){
+						my_elevator.state = LOADING;
+						break;
+					}	
+					if (floors[floor].passengers_waiting > 0) { 	// check if there are passengers on current floor to load
+						my_elevator.state = LOADING;
+						break;
+					}
+					else
+						my_elevator.state = DOWN;	
+				}
+				else{
+					my_elevator.state = DOWN;
+					break;
+				}
+				break;
+			case LOADING:	
+				// not yet implemented
+
+				ssleep(1);
+				int floor = my_elevator.current_floor - 1;
+
+				if (floors[floor].needs_unloading == true) { 				// check current floor for unloading first
+					struct passenger *passenger_ptr, *next_passenger_ptr;
+					list_for_each_entry_safe(passenger_ptr, next_passenger_ptr, 
+						&my_elevator.passenger_list, list) {
+						if(passenger_ptr->destination == my_elevator.current_floor){
+							switch (passenger_ptr->type) {
+								case P:
+									my_elevator.current_load -= 10;
+									break;
+								
+								case L:
+									my_elevator.current_load -= 15;
+									break;
+										
+								case B:
+									my_elevator.current_load -=  20;
+									break;
+										
+								case V:
+									my_elevator.current_load -=  5;
+									break; 	
+							}
+							// free memory
+							list_del(&passenger_ptr->list);
+							kfree(passenger_ptr);
+							
+						}	
+						/*
+						// free memory
+						list_del(&passenger_ptr->list);
+						kfree(passenger_ptr);
+						*/
+						// add to floor list
+						floors[floor].offload--;
+						floors[floor].needs_unloading = false;
 						
-        	case IDLE:
-        		// start
-        		ssleep(1);
-        		//my_elevator.state = LOADINGUP;
-        		
-        		for(int i = 0; i < MAX_FLOORS - 1; i++){		
-        			if(floors[i].passengers_waiting > 0)//{	// check if there are waiting passengers
-        				my_elevator.state = LOADINGUP;
-        				/*
-        				struct passenger *passenger_ptr;
-					list_for_each_entry(passenger_ptr, &floors[i].passenger_list, list){
-						if(passenger_ptr->start > my_elevator.current_floor)
-							my_elevator.state = UP;
-						else if(passenger_ptr->start < my_elevator.current_floor)
-							my_elevator.state = DOWN;
-						else if(passenger_ptr->start == my_elevator.current_floor)
-							my_elevator.state = LOADINGUP;	// probably change this to just loading
-						}
-        								
-        			}*/		  
-        			
-        		}
-        			
-			break;
-		
-		case LOADINGUP:
-			ssleep(1);
-			
-			int floor = my_elevator.current_floor - 1;
-			if (floors[floor].passengers_waiting > 0) { 	// check floor to load
-				if (my_elevator.current_load < MAX_WEIGHT) { 	// check for weight
+					}
+						
+							
+				}
+
+				if (my_elevator.current_load < MAX_WEIGHT) { 				// check for loading on-board
 					struct passenger *passenger_ptr, *next_passenger_ptr;
 					list_for_each_entry_safe(passenger_ptr, next_passenger_ptr, 
 						&floors[floor].passenger_list, list) {
-						
-						switch (passenger_ptr->type) {
-						case P:
-							my_elevator.current_load += 10;
-							break;
-					
-						case L:
-							my_elevator.current_load += 15;
-							break;
 							
-						case B:
-							my_elevator.current_load +=  20;
-							break;
-							
-						case V:
-							my_elevator.current_load +=  5;
-							break; 	
-						}
-					}
-					
-					// free memory
-					list_del(&passenger_ptr->list);
-					
-					// remove from floor list
-					floors[floor].passengers_waiting--;
-					
-					// mark destination
-					floors[passenger_ptr->destination - 1].offload++;	// check the -1
-                    			
-					// take the passenger from floors (waiting) and append to elevator list
-					list_add_tail(&passenger_ptr->list, &my_elevator.passenger_list);
-					
-				}
-			}
-			/*
-			struct passenger *passenger_ptr;
-			list_for_each_entry(passenger_ptr, &my_elevator.passenger_list, list){
-				if(passenger_ptr->destination == my_elevator.current_floor){
-					switch (passenger_ptr->type) {
-						case P:
-							my_elevator.current_load -= 10;
-							break;
-						
-						case L:
-							my_elevator.current_load -= 15;
-							break;
-								
-						case B:
-							my_elevator.current_load -=  20;
-							break;
-								
-						case V:
-							my_elevator.current_load -=  5;
-							break; 	
-
-					}
-					// free memory
-					list_del(&passenger_ptr->list);
-					kfree(passenger_ptr);	
-						
-				}
-			}
-			*/
-			
-			
-			if (floors[floor].offload > 0) { // check floor to offload
-				struct passenger *passenger_ptr, *next_passenger_ptr;
-				list_for_each_entry_safe(passenger_ptr, next_passenger_ptr, &my_elevator.passenger_list, list) {
-					if(passenger_ptr->destination == my_elevator.current_floor){
 						switch (passenger_ptr->type) {
-						case P:
-							my_elevator.current_load -= 10;
-							break;
-						
-						case L:
-							my_elevator.current_load -= 15;
-							break;
-								
-						case B:
-							my_elevator.current_load -=  20;
-							break;
-								
-						case V:
-							my_elevator.current_load -=  5;
-							break; 	
-						}
-					}	
-				}
-				
-					
-				// free memory
-				list_del(&passenger_ptr->list);
-				kfree(passenger_ptr);
-				
-				// add to floor list
-				floors[floor].offload--;	// edit
-
-				
-				// remove from elevator list
-				// remove from elevator load
-				// add to floor list	
-					
-			}
-			
-			
-			
-			my_elevator.state = UP;
-			
-			break;
-			
-		case UP:
-		
-			my_elevator.current_floor++;
-			ssleep(2);
-			if (my_elevator.current_floor != MAX_FLOORS)
-				my_elevator.state = LOADINGUP;
-			else
-				my_elevator.state = LOADINGDOWN;
-				
-			break;
-
-		case LOADINGDOWN:
-			ssleep(1);
-			
-			//int floor = my_elevator.current_floor - 1;
-			if (floors[floor].passengers_waiting > 0) { 	// check floor to load
-				if (my_elevator.current_load < MAX_WEIGHT) { 	// check for weight
-					struct passenger *passenger_ptr, *next_passenger_ptr;
-					list_for_each_entry_safe(passenger_ptr, next_passenger_ptr, 
-						&floors[floor].passenger_list, list) {
-						
-						switch (passenger_ptr->type) {
-						case P:
-							my_elevator.current_load += 10;
-							break;
-					
-						case L:
-							my_elevator.current_load += 15;
-							break;
+							case P:
+								my_elevator.current_load += 10;
+								break;
 							
-						case B:
-							my_elevator.current_load +=  20;
-							break;
+							case L:
+								my_elevator.current_load += 15;
+								break;
+								
+							case B:
+								my_elevator.current_load +=  20;
+								break;
+									
+							case V:
+								my_elevator.current_load +=  5;
+								break; 	
+						}
+					
 							
-						case V:
-							my_elevator.current_load +=  5;
-							break; 	
-						}
-					}
-					
-					// free memory
-					list_del(&passenger_ptr->list);
-					
-					// remove from floor list
-					floors[floor].passengers_waiting--;
-					
-					// mark destination
-					floors[passenger_ptr->destination - 1].offload++;	// check the -1
-                    			
-					// take the passenger from floors (waiting) and append to elevator list
-					list_add_tail(&passenger_ptr->list, &my_elevator.passenger_list);
-					
-				}
-			}
-			
-			if (floors[floor].offload > 0) { // check floor to offload
-				struct passenger *passenger_ptr, *next_passenger_ptr;
-				list_for_each_entry_safe(passenger_ptr, next_passenger_ptr, &my_elevator.passenger_list, list) {
-					if(passenger_ptr->destination == my_elevator.current_floor){
-						switch (passenger_ptr->type) {
-						case P:
-							my_elevator.current_load -= 10;
-							break;
-						
-						case L:
-							my_elevator.current_load -= 15;
-							break;
-								
-						case B:
-							my_elevator.current_load -=  20;
-							break;
-								
-						case V:
-							my_elevator.current_load -=  5;
-							break; 	
-						}
-					}	
-				}
+						// free memory
+						list_del(&passenger_ptr->list);
+							
+						// remove from floor list
+						floors[floor].passengers_waiting--;
+							
+						// mark destination
+						floors[passenger_ptr->destination - 1].offload++;	// check the -1
+		                    			
+						// take the passenger from floors (waiting) and append to elevator list
+						list_add_tail(&passenger_ptr->list, &my_elevator.passenger_list);
+						floors[floor].needs_unloading = true;
+					}		
+				}//end of on-board
 				
-					
-				// free memory
-				list_del(&passenger_ptr->list);
-				kfree(passenger_ptr);
-				
-				// add to floor list
-				floors[floor].offload--;	// edit
-
-				
-				// remove from elevator list
-				// remove from elevator load
-				// add to floor list	
-					
-			}
+				my_elevator.state = UP;
+				break;
 			
-			
-			
-			my_elevator.state = DOWN;
-			
-			break;
-		
-		case DOWN:
-			ssleep(2);
-			my_elevator.current_floor--;
-			
-			if (my_elevator.current_floor != 1)
-				my_elevator.state = LOADINGDOWN;
-			else
-				my_elevator.state = LOADINGUP;
-				
-			break;
-		}
+		}//end of switch
 	
-	}
+	}//end of while
 	return 0;
 }
 	
@@ -448,10 +349,7 @@ static ssize_t elevator_read(struct file *file, char __user *ubuf, size_t count,
         case IDLE:
             len += snprintf(buf + len, sizeof(buf) - len, "Elevator state: IDLE\n");
             break;
-        case LOADINGUP:
-            len += snprintf(buf + len, sizeof(buf) - len, "Elevator state: LOADING\n");
-            break;
-        case LOADINGDOWN:
+        case LOADING:
             len += snprintf(buf + len, sizeof(buf) - len, "Elevator state: LOADING\n");
             break;
         case UP:
@@ -468,47 +366,74 @@ static ssize_t elevator_read(struct file *file, char __user *ubuf, size_t count,
     	len += snprintf(buf + len, sizeof(buf) - len, "Current floor: %d\n", my_elevator.current_floor);  	
 
     	len += snprintf(buf + len, sizeof(buf) - len, "Current load: %d lbs\n", my_elevator.current_load);
-  
-	len += snprintf(buf + len, sizeof(buf) - len, "Elevator status: ");
-	/*
-	if (my_elevator.current_load > 0) {
-	    struct passenger *passenger_ptr;
-	    list_for_each_entry(passenger_ptr, &my_elevator.passenger_list, list) {
-	    	switch (passenger_ptr->type) {
-		case P:
-			len += snprintf(buf + len, sizeof(buf) - len, "P%d ", passenger_ptr->destination);
-			break;
-		case L:
-			len += snprintf(buf + len, sizeof(buf) - len, "L%d ", passenger_ptr->destination);
-			break;
-		case B:
-			len += snprintf(buf + len, sizeof(buf) - len, "B%d ", passenger_ptr->destination);
-			break;
-		case V:
-			len += snprintf(buf + len, sizeof(buf) - len, "V%d ", passenger_ptr->destination);
-			break;
-		default:
-			len += snprintf(buf + len, sizeof(buf) - len, "UNKNOWN");
-			break;
-		}
+  	
+  	if(my_elevator.current_load > 0){
+  		len += snprintf(buf + len, sizeof(buf) - len, "Elevator status:");
+	  	struct passenger *passenger_ptr;
+			list_for_each_entry(passenger_ptr, &my_elevator.passenger_list, list){
+		  		switch(passenger_ptr->type){
+		  			case 0:
+						len += snprintf(buf + len, sizeof(buf) - len, "P%d ",
+							passenger_ptr->destination);
+						break;
+					case 1:
+						len += snprintf(buf + len, sizeof(buf) - len, "L%d ",
+							passenger_ptr->destination);
+						break;
+					case 2:
+						len += snprintf(buf + len, sizeof(buf) - len, "B%d ",
+							passenger_ptr->destination);
+						break;
+					case 3:
+						len += snprintf(buf + len, sizeof(buf) - len, "V%d ",
+							passenger_ptr->destination);
+						break;							
+				}		
+			}
 		
-		len += snprintf(buf + len, sizeof(buf) - len, "\n");
-	    }
 	}
-	*/
- /*
-	printk("Accessing all floors");
-    	for (int i = 0; i < MAX_FLOORS; ++i) {
-        	mutex_lock(&floors[i].floor_mutex);
-        	len += snprintf(buf + len, sizeof(buf) - len, "[%s] Floor %d: %d", (my_elevator.current_floor == floors[i].floor_number) ? "*" : " ", floors[i].floor_number, floors[i].passengers_waiting);
-        	struct passenger *floor_passenger_ptr;
-        	list_for_each_entry(floor_passenger_ptr, &floors[i].passenger_list, list) {
-            		len += snprintf(buf + len, sizeof(buf) - len, " %c%d", floor_passenger_ptr->type, floor_passenger_ptr->destination);
-        	}
-        	len += snprintf(buf + len, sizeof(buf) - len, "\n");
-        	mutex_unlock(&floors[i].floor_mutex);
-    	}  
-    	*/
+	len += snprintf(buf + len, sizeof(buf) - len, "\n");
+	
+	
+	
+	
+	
+	if (my_elevator.state != OFFLINE) {
+    		for (int i = 4; i >= 0; i--) {
+        		int num_wait = 0;
+        		struct passenger *psgr;
+
+        		// Count the number of passengers waiting on the current floor
+        		list_for_each_entry(psgr, &floors[i].passenger_list, list) {
+            			num_wait++;
+        		}
+        	
+
+        		// Print information about the floor
+        		len += snprintf(buf + len, sizeof(buf) - len, "[ ] Floor %d: %d", i + 1, floors[i].passengers_waiting); 
+        		char psgr_char;
+        		switch (psgr->type){
+        			case 0: 
+        				psgr_char = 'P';
+        				break;
+        			case 1: 
+        				psgr_char = 'L';
+        				break;
+        			case 2: 
+        				psgr_char = 'B';
+        				break;	
+        			case 3: 
+        				psgr_char = 'V';
+        				break;		
+        		}
+        		len += snprintf(buf + len, sizeof(buf) - len, "%c%d\n", psgr_char, psgr->destination);
+        		
+        		printk(KERN_INFO "f5: start:%d dest:%d type:%d\n", psgr->start, psgr->destination, psgr->type );
+    		}
+	}
+	
+
+
     	return simple_read_from_buffer(ubuf, count, ppos, buf, len);
 }
 
