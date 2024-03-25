@@ -1,8 +1,8 @@
-# project-2
+c# project-2
 Elevator Kernel Module
 
 
-Division of Labor
+DIVISION OF LABOR
 
 Team Members:
 1. Joey White
@@ -32,6 +32,26 @@ Part 3e: Mutexes
 Part 3f: Scheduling Algorithm
 - Joey White, Sebastian Blanco
 
-Please note that these assignments are subject to discussion and adjustment based on the team's
-agreement and individual expertise. Regular communication and collaboration among team
-members are encouraged to ensure successful completion of the project.
+
+FILE LISTING
+
+part 1/
+    empty.c
+    empty.trace
+    part1.c
+    part1.trace
+    Makefile
+part 2/
+    src/
+      my_timer.c
+    Makefile
+part 3/
+    src/
+      elevator.c
+    Makefile
+    syscalls.c
+Makefile
+README.md
+
+
+COMPILING AND RUNNING PROGRAM
