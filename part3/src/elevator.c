@@ -84,16 +84,12 @@ extern int (*STUB_stop_elevator)(void);
 
 
 int start_elevator(void) {
-	printk(KERN_INFO "Hello from start_elevator");
 	// initialize elevator
 	if(my_elevator.state == OFFLINE){
 		my_elevator.state = IDLE;
     		my_elevator.current_floor = 1; 
-    		my_elevator.current_load = 0;
-  		//struct list_head list;  	
+    		my_elevator.current_load = 0;	
        		INIT_LIST_HEAD(&my_elevator.passenger_list);	// initialize linked list of passengers
-       		
-       		// maybe move back to here
        		
        		for(int i = 0; i < MAX_FLOORS; i++){		// initialize each waiting floor
        			INIT_LIST_HEAD(&floors[i].passenger_list);
@@ -110,7 +106,6 @@ int start_elevator(void) {
 
 
 int issue_request(int start_floor, int destination_floor, int type) {
-	printk("Hello from issue_request");
 	
 	if(mutex_lock_interruptible(&my_elevator.mutex) == 0){
 		// check for elevator logic
@@ -119,32 +114,14 @@ int issue_request(int start_floor, int destination_floor, int type) {
 		type < 0 || type > 3)
 			return 1;  
 			
-		//INIT_LIST_HEAD(&floors[start_floor-1].passenger_list);		// initializes a waiting passenger
-		/*
-		// line 92, moved here... ****
-		for(int i = 0; i < MAX_FLOORS; i++){				// initialize each waiting floor
-	       			INIT_LIST_HEAD(&floors[i].passenger_list);
-	       			floors[i].needs_unloading = 0;
-	    	}
-	    	*/
-	    			
-		
-		
-			
 		// queue elevator for pick up
 		floors[start_floor - 1].load++;
-		//floors[destination_floor - 1].offload++; // edit
-		
 		floors[start_floor - 1].passengers_waiting++; // update floors passengers_waiting	
 			
-		
-		
 		
 		// initialize passenger ptr	
 	       	struct passenger *psgr = kmalloc(sizeof(struct passenger), GFP_KERNEL);
 	       	
-		//if (!psgr)
-		//	return -ENOMEM;
 		psgr->type = type;
 	    	psgr->destination = destination_floor;
 	    	psgr->start = start_floor;
@@ -167,7 +144,6 @@ int issue_request(int start_floor, int destination_floor, int type) {
 		}
 		
 	    	list_add_tail(&psgr->list, &floors[start_floor - 1].passenger_list); 	// update  waiting passenger_list
-	    	printk(KERN_INFO "type: %d, start: %d, dest:%d\n", psgr->type, psgr->start, psgr->destination);
 	    	
 		mutex_unlock(&my_elevator.mutex);
 		return 0;
@@ -178,31 +154,37 @@ int issue_request(int start_floor, int destination_floor, int type) {
     	
 }
 
-// NEEDS FIXING
 int stop_elevator(void) {
-	printk(KERN_INFO "Hello from stop_elevator");
-	if (mutex_lock_interruptible(&my_elevator.mutex) == 0){
-		// free passenger ptr memory
-		struct passenger *passenger_ptr, *tmp;
-		list_for_each_entry_safe(passenger_ptr, tmp, &my_elevator.passenger_list, list) {
-			list_del(&passenger_ptr->list);
-			kfree(passenger_ptr);
-		}
-
-		kfree(&my_elevator.passenger_list);
-		
-		my_elevator.state = OFFLINE;
-		my_elevator.current_floor = 0;
-		mutex_unlock(&my_elevator.mutex);
-	    	return 0;
-    	}
-    	return 1;			// supposed to return 1 if already in process of stopping
+    if (mutex_lock_interruptible(&my_elevator.mutex) == 0) {
+        if (my_elevator.state != OFFLINE) {
+            my_elevator.state = DOWN; // start offloading passengers
+            while (my_elevator.num_passengers_onboard > 0) {
+                // wait for the elevator to offload all passengers
+                mutex_unlock(&my_elevator.mutex);
+                ssleep(1);
+                if (mutex_lock_interruptible(&my_elevator.mutex) != 0) {
+                    return 1; 
+                }
+            }
+            // free passenger ptr memory
+            struct passenger *passenger_ptr, *tmp;
+            list_for_each_entry_safe(passenger_ptr, tmp, &my_elevator.passenger_list, list) {
+                list_del(&passenger_ptr->list);
+                kfree(passenger_ptr);
+            }
+            my_elevator.state = OFFLINE;
+            my_elevator.current_floor = 0;
+            mutex_unlock(&my_elevator.mutex);
+            return 0;
+        } else {
+            mutex_unlock(&my_elevator.mutex);
+            return 1; // elevator is already running
+        }
+    }
+    return 1; 
 }
 
 static int elevator_run(void *data) {
-	printk(KERN_INFO "Hello from elevator_run");
-	// sys call
-	// start_elevator();
 	ssleep(5);
 	my_elevator.state = OFFLINE;
 	
@@ -218,10 +200,8 @@ static int elevator_run(void *data) {
 					ssleep(1);
 					
 					for(int i = 0; i < MAX_FLOORS - 1; i++){		
-						if(floors[i].passengers_waiting > 0)//{	// check if there are waiting passengers
+						if(floors[i].passengers_waiting > 0)	// check if there are waiting passengers
 							my_elevator.state = UP;
-						//else
-							//my_elevator.state = IDLE;
 					}	
 					
 					break;
@@ -237,7 +217,7 @@ static int elevator_run(void *data) {
 							my_elevator.state = LOADING;
 							break;
 						}	
-						else if(floors[floor].passengers_waiting > 0) { // edited to eif 	// check if there are passengers on current floor to load
+						else if(floors[floor].passengers_waiting > 0) { 
 							my_elevator.state = LOADING;
 							break;	
 						}
@@ -253,7 +233,7 @@ static int elevator_run(void *data) {
 							my_elevator.state = LOADING;
 							break;
 						}	
-						else if (floors[floor].passengers_waiting > 0) { 	// check if there are passengers on current floor to load
+						else if (floors[floor].passengers_waiting > 0) { 	
 							my_elevator.state = LOADING;
 							break;
 						}
@@ -273,7 +253,7 @@ static int elevator_run(void *data) {
 							my_elevator.state = LOADING;
 							break;
 						}	
-						else if (floors[floor].passengers_waiting > 0) { 	// check if there are passengers on current floor to load
+						else if (floors[floor].passengers_waiting > 0) { 	
 							my_elevator.state = LOADING;
 							break;
 						}
@@ -288,7 +268,7 @@ static int elevator_run(void *data) {
 							my_elevator.state = LOADING;
 							break;
 						}	
-						else if (floors[floor].passengers_waiting > 0) { 	// check if there are passengers on current floor to load
+						else if (floors[floor].passengers_waiting > 0) { 	
 							my_elevator.state = LOADING;
 							break;
 						}
@@ -299,15 +279,12 @@ static int elevator_run(void *data) {
 					}
 					break;
 				case LOADING:	
-					// not yet implemented
 					
 					ssleep(1);
 					int floor = my_elevator.current_floor - 1;
-					//if(mutex_lock_interruptible(&floors[floor].floor_mutex) == 0){
-					
 						// **UNLOAD**
 						
-					if (floors[floor].needs_unloading == 1 && floors[floor].offload != 0) { 	// check current floor for
+					if (floors[floor].needs_unloading == 1 && floors[floor].offload != 0) { 	
 												// unloading first
 						if (mutex_lock_interruptible(&floors[floor].floor_mutex) == 0){					
 												
@@ -346,35 +323,19 @@ static int elevator_run(void *data) {
 										my_elevator.num_passengers_onboard--;
 										my_elevator.num_serviced++; 
 										
-										// maybe move up?
-									// remove from floor lists
+										// remove from floor lists
 										floors[floor].offload--;
 										floors[floor].needs_unloading = 0;	
 							    			
 										
-									}
-									/*
-									// maybe move up?
-									// remove from floor lists
-										floors[floor].offload--;
-										floors[floor].needs_unloading = 0;	
-										*/
-									/*
-									// free memory
-									list_del(&passenger_ptr->list);
-									kfree(passenger_ptr);
-									*/
-									
-									/*		
-									mutex_unlock(&floors[floor].floor_mutex);
-									*/													
+									}													
 									
 								}
+								
+								mutex_unlock(&floors[floor].floor_mutex);
 							}
 							
-							mutex_unlock(&floors[floor].floor_mutex);
 						} 
-						//mutex_unlock(&floors[floor].floor_mutex);
 					}// end **UNLOAD
 						// check for loading on-board
 					if (my_elevator.current_load < MAX_WEIGHT) {						
@@ -410,9 +371,9 @@ static int elevator_run(void *data) {
 								floors[floor].passengers_waiting--;									
 									
 								// mark destination
-								floors[passenger_ptr->destination - 1].offload++;	// check the -1
+								floors[passenger_ptr->destination - 1].offload++;
 						    			
-								// take the passenger from floors (waiting) and append to elevator list
+								
 								list_add_tail(&passenger_ptr->list, &my_elevator.passenger_list);
 								//floors[floor].needs_unloading = 1;
 								floors[floor].needs_unloading = 1;
@@ -447,7 +408,6 @@ static int elevator_run(void *data) {
 }
 	
 static ssize_t elevator_read(struct file *file, char __user *ubuf, size_t count, loff_t *ppos) {
-    	//char buf[256];
     	char buf[900];
     	int len = 0;
     	
@@ -557,7 +517,6 @@ static ssize_t elevator_read(struct file *file, char __user *ubuf, size_t count,
 			// number of people waiting on floors	
 			len += snprintf(buf + len, sizeof(buf) - len, "Number of passengers waiting: %d\n", num_waiting);
 			
-		// something wrong here	
 			// number of people that have been serviced
 			len += snprintf(buf + len, sizeof(buf) - len, "Number of passengers serviced: %d\n",
 				 my_elevator.num_serviced);
@@ -574,7 +533,6 @@ static const struct proc_ops elevator_fops = {
 
 static int __init elevator_init(void) {
 
-	printk(KERN_INFO "hello from elevator_init\n");
     	STUB_start_elevator = start_elevator;
 	STUB_issue_request = issue_request;
 	STUB_stop_elevator = stop_elevator;
@@ -596,7 +554,6 @@ static int __init elevator_init(void) {
         	printk(KERN_ERR "Failed to create elevator thread\n");
         	return PTR_ERR(my_elevator.thread);
     	}
-    	printk(KERN_INFO "created elevator thread\n");
 	
 	// create proc entry
     	elevator_entry = proc_create(ENTRY_NAME, PERMS, PARENT, &elevator_fops);
@@ -604,7 +561,6 @@ static int __init elevator_init(void) {
         	printk(KERN_ERR "Failed to create /proc/elevator entry\n");
         	return -ENOMEM;
     	}
-    	printk(KERN_INFO "created proc entry\n");
     	return 0;
 }
 
@@ -629,8 +585,6 @@ static void __exit elevator_exit(void) {
         	
         
 
-        // Free the passenger list head for each floor
-        kfree(&floors[i].passenger_list);
     }
 }
 
