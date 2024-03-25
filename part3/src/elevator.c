@@ -9,7 +9,6 @@
 #include <linux/string.h>
 #include <linux/mutex.h>
 
-
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Group-31");
 MODULE_DESCRIPTION("Elevator kernel module");
